@@ -162,9 +162,23 @@ For a full deployment, you'll need:
 
 ## How the RAG System Works
 
-This application utilized a RAG-based retrieval system for increased reliable outputs by the LLM. This system utilizes the NewsAPI and yfinance API to get information about a specific stock the user inputs. This is a naive single-stage RAG with hybrid context(unstructures and structured data). 
+This application utilized a RAG-based retrieval system for increased reliable outputs by the LLM. This system utilizes the NewsAPI and yfinance API to get information about a specific stock the user inputs. This is a naive single-stage RAG with hybrid context(unstructures and structured data). The frontend sends a POST request to the FAST API, and the backend starts to get the data. It sends API requests to the NewsAPI and yfinance. This information is converted into embeddings by a MiniLM-L6-v2 and stored in a FAISS vector database.  
 
+```
+query_emb = embedder.encode([query])
+    distances, indices = news_index.search(np.array(query_emb), top_k)
 
+    relevant = [news_texts[idx] for idx in indices[0] if idx < len(news_texts)]
+    return "\n".join(relevant)
+```
+
+The question is also converted into an embedding here:
+
+```
+query_emb = embedder.encode([query])
+distances, indices = news_index.search(np.array(query_emb), top_k)
+```
+Then the backend computes the squared Euclidean (L2) distance between the query vector and stored news vectors. It then returns the top k vectors with the smallest distances away. This means that they are more semantically similar. These embeddings are pointing to the relative text which is then retrieved and inputted into the LLM prompt.
 
 ## License
 

@@ -65,12 +65,16 @@ def fetch_company_news(company_name):
         print(f"Failed to fetch news for {company_name}: {response.text}")
         return []
 
+
+
 def update_company_database(company_name):
     """Fetch and embed news for user-selected company."""
     global news_texts, news_index
 
     print(f"[INFO] Fetching news for: {company_name}")
     news_texts = fetch_company_news(company_name)
+
+
 
     if not news_texts:
         print("[WARN] No news found.")
@@ -80,8 +84,12 @@ def update_company_database(company_name):
     news_index = faiss.IndexFlatL2(embedding_dim)
     news_index.add(np.array(embeddings))
 
+
+
     print(f"[INFO] News database updated for {company_name}.")
     return True
+
+
 
 def retrieve_relevant_news(query, top_k=5):
     """Retrieve top-k news articles relevant to the query."""

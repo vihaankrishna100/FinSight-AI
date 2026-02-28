@@ -164,7 +164,7 @@ trainer.save_model("qwen2.5-7b-finance-lora")
 tokenizer.save_pretrained("qwen2.5-7b-finance-lora")
 print("Training complete. Model saved to qwen2.5-7b-finance-lora/")
 
-!zip -r qwen2.5-7b-finance-lora.zip qwen2.5-7b-finance-lora/
+#!zip -r qwen2.5-7b-finance-lora.zip qwen2.5-7b-finance-lora/
 
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -183,6 +183,7 @@ tokenizer.save_pretrained("qwen2.5-7b-merged")
 
 """Copied code from ggerganov github to convert into gguf file for inference"""
 
+'''
 !git clone https://github.com/ggerganov/llama.cpp
 !pip install -q -r llama.cpp/requirements.txt
 
@@ -212,3 +213,4 @@ from google.colab import files
 files.download('qwen2.5-7b-finance-q4km.gguf')
 
 !zip -r qwen2.5-7b-finance.gguf.zip qwen2.5-7b-finance.gguf
+'''
