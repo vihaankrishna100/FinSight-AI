@@ -1,5 +1,7 @@
 # Finsight AI
 
+<img src="resources/home.png" alt="Home page of FinSight AI with input" width="53%"/>
+
 A web application that provides AI-powered financial analysis using Retrieval-Augmented Generation (RAG) combined with real-time news data. Think of it as having a financial analyst that can quickly read through the latest news about any company and give you investment insights.
 
 ## What This Does
