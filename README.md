@@ -1,4 +1,4 @@
-# RAG LLM Finance - AI Financial Advisor
+# Finsight AI
 
 A web application that provides AI-powered financial analysis using Retrieval-Augmented Generation (RAG) combined with real-time news data. Think of it as having a financial analyst that can quickly read through the latest news about any company and give you investment insights.
 
@@ -16,6 +16,7 @@ This app lets you ask questions about any publicly traded company, and it will:
 - Intelligent analysis: Uses embeddings and vector search to find news most relevant to your question
 - Investment recommendations: Provides Buy/Hold/Sell recommendations with detailed rationale
 - Modern interface: Clean, responsive web interface built with React
+- Graph Based Responses: Provides graphical analysis of current stock and allows for visual information
 - Progress tracking: See exactly what the system is doing as it processes your request
 
 ## Architecture
@@ -34,6 +35,17 @@ The backend processes everything locally, which means your data stays on your ma
 - At least 8GB of RAM (16GB recommended for better performance)
 - A NewsAPI key (free tier gives you 100 requests per day, which is plenty for testing)
 - The model file: `dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf` (about 4.4GB)
+
+### Using Your Finetuned LoRA Zip
+
+If you trained a LoRA adapter (for example `qwen2.5-7b-finance-lora.zip`), you cannot load that zip directly with `llama-cpp-python`.
+
+This app requires a `.gguf` model file, so use this flow:
+1. Merge LoRA adapter with base HF model on Colab
+2. Convert merged model to GGUF
+3. Run app with `MODEL_PATH=./your-finetuned-model.gguf`
+
+Full steps are in [LORA_ADAPTER_USAGE.md](LORA_ADAPTER_USAGE.md).
 
 ## Getting Started
 
@@ -60,7 +72,7 @@ pip install -r requirements.txt
 # If you downloaded it elsewhere, copy it here
 ```
 
-Once everything is installed, start the backend:
+heres the code to start the backend:
 
 ```bash
 python main.py
@@ -70,7 +82,7 @@ You should see the model loading (this takes a minute or two), and then it will 
 
 ### Setting Up the Frontend
 
-In a new terminal window (keep the backend running):
+keep the backend running, but create a new terminal window for the frontend:
 
 ```bash
 # Go into the frontend directory
@@ -83,15 +95,9 @@ npm install
 npm start
 ```
 
-The frontend will open automatically in your browser at `http://localhost:3000`. If it doesn't, just navigate there manually.
+The frontend will open automatically in your browser at `http://localhost:3000`. If it doesn't, just type it manually
 
-### First Use
 
-1. Open the app in your browser (usually `http://localhost:3000`)
-2. Enter a company name (try "Apple", "Tesla", or "Microsoft" to start)
-3. Ask a question like "What are the current investment risks and opportunities?"
-4. Watch the progress updates as it fetches news and generates analysis
-5. Read the comprehensive analysis and recommendations
 
 ## Configuration
 
@@ -127,6 +133,7 @@ For development and personal use, running both frontend and backend locally work
 
 Since Vercel doesn't support running large language models, you can deploy just the frontend there and run the backend on your local machine or another server:
 
+###### Deployment
 ```bash
 # Install Vercel CLI
 npm i -g vercel
@@ -153,57 +160,14 @@ For a full deployment, you'll need:
 - All processing happens locally, so no data is sent to external AI services
 - For best performance, use a machine with 16GB+ RAM and preferably a GPU
 
-## Troubleshooting
+## How the RAG System Works
 
-**The model won't load**
-- Make sure the model file is in the `api/` directory and named correctly
-- Check that you have enough RAM (8GB minimum, 16GB recommended)
-- Look at the error message in the terminal for more details
+This application utilized a RAG-based retrieval system for increased reliable outputs by the LLM. This system utilizes the NewsAPI and yfinance API to get information about a specific stock the user inputs. This is a naive single-stage RAG with hybrid context(unstructures and structured data). 
 
-**Can't connect to the backend**
-- Make sure the backend is running (check `http://localhost:8000/docs`)
-- Check that port 8000 isn't being used by something else
-- Look at the browser console for connection errors
 
-**No news articles found**
-- Check your NewsAPI key
-- Make sure you haven't hit the daily request limit (100 for free tier)
-- Try a different company name (some companies might not have recent news)
-
-**Slow responses**
-- This is normal - the model needs time to process
-- The first request after startup takes longer as the model warms up
-- Using a GPU significantly speeds things up
-
-## Performance Tips
-
-- 16GB+ RAM makes a noticeable difference
-- GPU acceleration (if available) speeds up inference significantly
-- The model is quantized (Q4_K_M) which balances quality and speed
-- Consider using a smaller model if speed is more important than quality
-
-## How the RAG System Works (Technical Details)
-
-For those interested in the technical implementation:
-
-1. **News Retrieval**: When you submit a query, the system fetches the 5 most recent news articles from NewsAPI
-2. **Embedding Creation**: Each news article is converted into a vector embedding using Sentence Transformers (all-MiniLM-L6-v2)
-3. **Vector Storage**: These embeddings are stored in a FAISS index for fast similarity search
-4. **Query Embedding**: Your question is also converted into an embedding
-5. **Retrieval**: FAISS finds the news articles most similar to your question (top-k retrieval)
-6. **Context Building**: The retrieved news is formatted and added to the prompt as context
-7. **Generation**: The fine-tuned Dolphin model generates a response based on both its training and the retrieved context
-
-This is a classic RAG pipeline, which is why the application can provide current, relevant information even though the model itself was trained on older data.
 
 ## License
 
 This project is open source and available under the MIT License.
 
-## Contributing
 
-Contributions are welcome! If you find bugs, have feature ideas, or want to improve the code, feel free to submit a pull request or open an issue.
-
-## Support
-
-If you run into issues, check the troubleshooting section above. For additional help, you can open an issue on GitHub with details about your problem. 

@@ -1,48 +1,53 @@
-# Install needed packages if not already done
-# pip install llama-cpp-python gradio requests sentence-transformers faiss-cpu
-
 import os
 import sys
-import time
 import gradio as gr
 import requests
 import faiss
 import numpy as np
-from llama_cpp import Llama
 from sentence_transformers import SentenceTransformer
+import yfinance as yf
+from llama_cpp import Llama
+
+MODEL_PATH = os.getenv("MODEL_PATH", "./dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf")
 
 
+def has_lora_adapter_folder(path):
+    return os.path.isdir(path) and os.path.exists(os.path.join(path, "adapter_model.safetensors"))
 
 
-# Load Dolphin Llama 8B Q4 model (optimized for Mac M4)
-# Make sure to include one with 2048 context length
-llm = Llama(
-    model_path="/Users/vihaankrishna/RAG_LLM_Physics/dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf",
-    n_gpu_layers=5,
-    use_mlock=True,
-    verbose=False,
-    n_ctx=2048,
-    n_batch=128
-)
+if not os.path.exists(MODEL_PATH):
+    print(f"\n[ERROR] Model file not found: {MODEL_PATH}")
+    if has_lora_adapter_folder("./qwen2.5-7b-finance-lora"):
+        print("\n[INFO] Found LoRA adapter folder: ./qwen2.5-7b-finance-lora")
+        print("[INFO] This app uses llama.cpp and requires a merged GGUF model.")
+        print("[INFO] Merge LoRA with base model on Colab, convert to GGUF, then set MODEL_PATH.")
+    print("\nTo download the model, run:")
+    print("  wget -O dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf https://huggingface.co/TheBloke/Dolphin-2.9.2-Qwen-7B-GGUF/resolve/main/dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf")
+    sys.exit(1)
 
-# Load fast embedder
+try:
+    print(f"[MODEL] Loading Dolphin Qwen from {MODEL_PATH}...")
+    llm = Llama(MODEL_PATH, n_gpu_layers=-1, n_ctx=2048)
+    print("[MODEL] Model loaded successfully")
+except Exception as e:
+    print(f"[MODEL ERROR] Failed to load model: {e}")
+    sys.exit(1)
+
+
+#creates embeddings of all the information recieved from api calls
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Initialize FAISS
+
 embedding_dim = 384
 news_index = faiss.IndexFlatL2(embedding_dim)
 news_texts = []
 
-# NewsAPI config
-NEWS_API_KEY = "ac0a51f5e60740508402c48acec86ff2"  
 
-# Context + token settings
-CONTEXT_WINDOW = 2048
-MAX_GENERATE_TOKENS = 512
-RESERVED_TOKENS = 50
+#add to .env later
+NEWS_API_KEY = "ac0a51f5e60740508402c48acec86ff2"
 
-# --- FUNCTIONS ---
-print("Step 1 done")
+
+
 def fetch_company_news(company_name):
     """Fetch news articles for a specific company."""
     url = (f"https://newsapi.org/v2/everything?"
@@ -89,52 +94,47 @@ def retrieve_relevant_news(query, top_k=5):
     relevant = [news_texts[idx] for idx in indices[0] if idx < len(news_texts)]
     return "\n".join(relevant)
 
-def build_prompt(user_query, company_name):
-    """Builds prompt including relevant news and user query."""
-    relevant_news = retrieve_relevant_news(user_query)
-    system_prompt = """<|im_start|>system
-You are an AI-powered equity research analyst working at a leading investment firm. Your role is to provide concise, data-driven, and unbiased investment analysis based on the most recent financial news and market trends.
-
-Always do the following:
-- Use recent news headlines to identify financial risks and opportunities.
-- Clearly mention both upside potential and downside risks.
-- If applicable, summarize with a Buy / Hold / Sell recommendation.
-- Provide a rationale supported by evidence (e.g., earnings, forecasts, partnerships).
-- Remain objective and professional. Avoid hype or speculation.
-<|im_end|>"""
-
-    news_context = f"<|im_start|>news analyze this\n{relevant_news}<|im_end|>\n"
-
-    user_prompt = f"<|im_start|>user\n{user_query}\nGiven the recent news about {company_name}, please answer the question above using the news as context.<|im_end|>\n"
-
-    assistant_prompt = "<|im_start|>analyst\n"
-
-
-    return system_prompt + news_context + user_prompt + assistant_prompt
+def get_stock_data(ticker):
+    """Fetch real-time stock data."""
+    try:
+        ticker_obj = yf.Ticker(ticker.upper())
+        info = ticker_obj.info
+        return f"Current Price: ${info.get('currentPrice', 'N/A')}, P/E Ratio: {info.get('trailingPE', 'N/A')}, Market Cap: ${info.get('marketCap', 'N/A')}"
+    except:
+        return "Stock data unavailable"
 
 def generate_response(user_query, company_name):
-    """Full RAG process: retrieve -> build prompt -> generate."""
-    prompt = build_prompt(user_query, company_name)
+    """Generate response using local Dolphin Qwen model."""
+    try:
+        relevant_news = retrieve_relevant_news(user_query)
+        stock_info = get_stock_data(company_name)
+        
+        prompt = f"""You are an AI-powered equity research analyst.
 
-    input_token_estimate = len(prompt.split())
-    max_tokens_allowed = CONTEXT_WINDOW - input_token_estimate - RESERVED_TOKENS
-    max_tokens_allowed = max(1, min(max_tokens_allowed, MAX_GENERATE_TOKENS))
+Recent News about {company_name}:
+{relevant_news}
 
-    response = llm(prompt, max_tokens=max_tokens_allowed, echo=False)
+Stock Data:
+{stock_info}
 
-    if "choices" in response and response["choices"]:
-        return response["choices"][0].get("text", "").strip()
-    else:
-        return "I'm sorry, I couldn't generate a response."
-    
-    if input_token_estimate + RESERVED_TOKENS >= CONTEXT_WINDOW:
-        return "Prompt too long. Please shorten your input."
+User Question: {user_query}
 
-
-# --- GRADIO CHATBOT ---
+Provide a concise, data-driven investment analysis."""
+        
+        print(f"[GENERATION] Generating response for {company_name}...")
+        
+        output = llm(prompt, max_tokens=300, temperature=0.7, top_p=0.9)
+        response_text = output['choices'][0]['text'].strip()
+        
+        print(f"[GENERATION] ✅ Response generated")
+        return response_text if response_text else "Unable to generate response."
+        
+    except Exception as e:
+        print(f"[GENERATION ERROR] {str(e)}")
+        return f"Error during generation: {str(e)}"
 
 def chat(company_input, question_input):
-    #Handles user input: company + question.
+    """Handles user input: company + question."""
     if not company_input.strip():
         return "Please enter a valid company name."
 
@@ -148,7 +148,7 @@ iface = gr.Interface(
     inputs=[gr.Textbox(label="Company to Track"), gr.Textbox(label="Your Investment Question")],
     outputs="text",
     title="Personalized AI Financial Advisor",
-    description="Input a company and get real-time financial insights based on live news updated "
+    description="Input a company and get real-time financial insights based on live news"
 )
 
 iface.launch(share=True)

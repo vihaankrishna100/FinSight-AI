@@ -2,6 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
+
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -11,12 +13,14 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
-/* Custom scrollbar */
+/*scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
 }
@@ -27,23 +31,26 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #c1c1c2;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: #a5a8a8;
 }
 
-/* Smooth transitions */
+
 * {
   transition: all 0.2s ease-in-out;
 }
 
-/* Custom focus styles */
+
+
 input:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
+
+
 
 /* Loading animation */
 @keyframes pulse {
@@ -54,6 +61,8 @@ input:focus, textarea:focus {
     opacity: 0.5;
   }
 }
+
+
 
 .animate-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

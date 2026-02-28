@@ -5,11 +5,11 @@ const LOCAL_IP = '192.168.1.100'; // Replace with your actual local IP
 export const config = {
   // For local development
   development: {
-    API_BASE_URL: 'http://localhost:8000'
+    API_BASE_URL: 'http://localhost:8010'
   },
-  // For friends to access (replace with your actual local IP)
+  
   external: {
-    API_BASE_URL: `http://${LOCAL_IP}:8000`
+    API_BASE_URL: `http://${LOCAL_IP}:8010`
   }
 };
 
