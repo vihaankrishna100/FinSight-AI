@@ -9,9 +9,38 @@ function App() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [stockGraph, setStockGraph] = useState(null);
+  const [stockGraphs, setStockGraphs] = useState({ price: null, volume: null, returns: null });
   const [graphLoading, setGraphLoading] = useState(false);
+  const [graphPeriod, setGraphPeriod] = useState('3mo');
   const responseRef = useRef(null);
+//Creates dropdown to change data frame and added refresh charts button to reduce API call
+  const fetchGraphs = async () => {
+    if (!company.trim()) return;
+    try {
+      setGraphLoading(true);
+      const ticker = company.trim().toUpperCase();
+      const graphTypes = ['price', 'volume', 'returns'];
+      
+      const promises = graphTypes.map(type =>
+        fetch(`${getApiUrl()}/stock/graph`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, period: graphPeriod, graph_type: type })
+        }).then(res => res.ok ? res.json() : null)
+      );
+      
+      const [priceData, volumeData, returnsData] = await Promise.all(promises);
+      setStockGraphs({
+        price: priceData?.image || null,
+        volume: volumeData?.image || null,
+        returns: returnsData?.image || null
+      });
+    } catch (err) {
+      console.error('Error fetching graphs:', err);
+    } finally {
+      setGraphLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,30 +55,10 @@ function App() {
     setLoading(true);
     setError('');
     setResponse('Initializing analysis...\n');
-    setStockGraph(null);
+    setStockGraphs({ price: null, volume: null, returns: null });
 
-    // Fetch stock graph in parallel
-    const fetchGraph = async () => {
-      try {
-        setGraphLoading(true);
-        const ticker = company.trim().toUpperCase();
-        
-        const chartResponse = await fetch(`${getApiUrl()}/stock/graph`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticker, period: '3mo', graph_type: 'price' })
-        });
-        if (chartResponse.ok) {
-          const chartData = await chartResponse.json();
-          setStockGraph(chartData.image);
-        }
-      } catch (err) {
-        console.error('Error fetching graph:', err);
-      } finally {
-        setGraphLoading(false);
-      }
-    };
-    fetchGraph();
+    // Fetch all stock graphs in parallel
+    fetchGraphs();
 
     try {
       const response = await fetch(`${getApiUrl()}/chat`, {
@@ -167,7 +176,36 @@ function App() {
                 />
               </div>
 
-
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="block text-lg font-semibold text-gray-700 mb-3">
+                    Time Frame
+                  </label>
+                  <select
+                    value={graphPeriod}
+                    onChange={(e) => setGraphPeriod(e.target.value)}
+                    className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none"
+                    disabled={loading || graphLoading}
+                  >
+                    <option value="1mo">1 Month</option>
+                    <option value="3mo">3 Months</option>
+                    <option value="6mo">6 Months</option>
+                    <option value="1y">1 Year</option>
+                    <option value="2y">2 Years</option>
+                    <option value="5y">5 Years</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={fetchGraphs}
+                    disabled={loading || graphLoading || !company.trim()}
+                    className="px-6 py-3 text-lg font-semibold text-white bg-green-600 rounded-xl hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {graphLoading ? 'Loading...' : 'Refresh Charts'}
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label htmlFor="question" className="block text-lg font-semibold text-gray-700 mb-3">
@@ -241,16 +279,35 @@ function App() {
 
           {/* Stock Graph Display */}
 
-          {(stockGraph || graphLoading) && (
+          {(stockGraphs.price || stockGraphs.volume || stockGraphs.returns || graphLoading) && (
             <div className="bg-white rounded-2xl shadow-2xl p-8 mt-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">Stock Price Chart</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Stock Charts</h2>
               {graphLoading ? (
                 <div className="flex items-center justify-center p-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                  <span className="ml-3 text-gray-600">Loading chart...</span>
+                  <span className="ml-3 text-gray-600">Loading charts...</span>
                 </div>
               ) : (
-                <img src={stockGraph} alt="Stock price chart" className="w-full rounded-lg" />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {stockGraphs.price && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">Price Chart</h3>
+                      <img src={stockGraphs.price} alt="Price chart" className="w-full rounded-lg" />
+                    </div>
+                  )}
+                  {stockGraphs.volume && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">Volume Chart</h3>
+                      <img src={stockGraphs.volume} alt="Volume chart" className="w-full rounded-lg" />
+                    </div>
+                  )}
+                  {stockGraphs.returns && (
+                    <div className="lg:col-span-2">
+                      <h3 className="text-lg font-semibold text-gray-700 mb-2">Daily Returns</h3>
+                      <img src={stockGraphs.returns} alt="Returns chart" className="w-full rounded-lg" />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
