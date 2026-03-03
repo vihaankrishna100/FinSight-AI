@@ -2,7 +2,7 @@
 
 <img src="resources/home.png" alt="Home page of FinSight AI with input" width="53%"/>
 
-A web application that provides AI-powered financial analysis using Retrieval-Augmented Generation (RAG) combined with real-time news data. Think of it as having a financial analyst that can quickly read through the latest news about any company and give you investment insights.
+A web application that provides financial analysis inference using a finetuned LM using Retrieval-Augmented Generation (RAG) combined with real-time news data. Think of it as having a financial analyst that can quickly read through the latest news about any company and give you investment insights.
 
 ## What This Does
 
@@ -19,24 +19,54 @@ This app lets you ask questions about any publicly traded company, and it will:
 - Investment recommendations: Provides Buy/Hold/Sell recommendations with detailed rationale
 - Modern interface: Clean, responsive web interface built with React
 - Graph Based Responses: Provides graphical analysis of current stock and allows for visual information
-- Progress tracking: See exactly what the system is doing as it processes your request
+- Progress tracking: See exactly what the system is doing as it processes your request(future implementation: Chain of Thought Reasoning)
 
 ## Architecture
 
 The application has two main parts:
 
-1. **Backend API** (in the `/api/` folder): A FastAPI server that runs the AI model locally, handles news retrieval, creates embeddings, and performs vector search using FAISS
-2. **Frontend** (in the `/frontend/` folder): A React web application that provides the user interface
+1. **Backend API** (in the `/api/` folder): A FastAPI server that runs the AI model locally, handles news retrieval, creates embeddings, and performs vector search using FAISS vector database
+2. **Frontend** (in the `/frontend/` folder): A React web application that provides the user interface and sends POST requests
 
-The backend processes everything locally, which means your data stays on your machine and you don't need to worry about API costs for the AI model itself (though you'll need a NewsAPI key for news data).
+The backend processes everything locally, which means your data stays on your machine and you don't need to worry about API costs for the finetuned AI model since it is loaded onto your computer. The only API keys needed are yfinance and NewsAPI
 
 ## What You'll Need
 
+For replication of this project you need:
+
 - Python 3.9 or higher
 - Node.js 16 or higher
-- At least 8GB of RAM (16GB recommended for better performance)
+- At least 8GB of RAM (16GB recommended for better performance, I found that it saves a lot of time especially in testing and validation)
 - A NewsAPI key (free tier gives you 100 requests per day, which is plenty for testing)
-- The model file: `dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf` (about 4.4GB)
+- The model file: `Qwen-2.5-7B-Instruct` (about 4.4GB which you can find here: [Hugging Face Qwen Model](https://huggingface.co/Qwen/Qwen2.5-7B-Instruct))
+
+Or you can use this code:
+
+```
+BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, use_fast=True)
+
+model = AutoModelForCausalLM.from_pretrained(
+
+    BASE_MODEL,
+    quantization_config=bnb_config,
+
+    device_map="auto",
+    attn_implementation="eager",
+)
+
+```
+
+## Quantinization
+
+This model is first quantinized utilzing **QLoRA 4-Bit training**. Since I was training with limited time and resources I quantinized the model to 4-bit integers instead of the normal 16 or 32. I trained the model using 4-bit weights, but I also utilized **double quantinization** to reduce the file size by around 1.1 GB. This technique quantinizes the scale factor(quantinized_weight * scale ~ original_weight) as well. The scale factor is needed to dequantinize the weights after LoRA training so it is a 16 or 32 bit integer itself. By converting this a 8-bit integer the overall training time heavily decreases, but the computational cost to dequantize is a little higher.
+
+By using:
+
+```
+bnb_4bit_use_double_quant=True
+```
+You can double quantize your model for more effcient training. After training I then merged the LoRA weights with the original model again to "finetune" the model. This step converted it back to a FP16 model. Using the llama.cpp package I quantized the GGUF FP16 file to a 4-bit, K-quantized, medium-variant GGUF file for CPU level support and on-device inference(q4_k_m.gguf).
 
 ### Using Your Finetuned LoRA Zip
 
@@ -44,10 +74,11 @@ If you trained a LoRA adapter (for example `qwen2.5-7b-finance-lora.zip`), you c
 
 This app requires a `.gguf` model file, so use this flow:
 1. Merge LoRA adapter with base HF model on Colab
-2. Convert merged model to GGUF
+2. Convert merged model to GGUF utilzing the llama cpp package
 3. Run app with `MODEL_PATH=./your-finetuned-model.gguf`
 
-Full steps are in [LORA_ADAPTER_USAGE.md](LORA_ADAPTER_USAGE.md).
+This is all done in the [LoRA Finetuning File](https://github.com/vihaankrishna100/FinSight-AI/blob/main/lora_finetuned_financial_mode%20(1).py)
+
 
 ## Getting Started
 
@@ -70,8 +101,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Make sure you have the model file in the api directory
-# It should be named: dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf
-# If you downloaded it elsewhere, copy it here
+# It should be named: qwen2.5-7b-Q4_K_M.gguf
 ```
 
 heres the code to start the backend:
@@ -80,7 +110,7 @@ heres the code to start the backend:
 python main.py
 ```
 
-You should see the model loading (this takes a minute or two), and then it will say the server is running on `http://localhost:8000`. You can check if it's working by visiting `http://localhost:8000/docs` - that's the interactive API documentation.
+You should see the model loading (this takes 3-4 minutes), and then it will say the server is running on `http://localhost:8000`. This is not where the site is hosted rather where the backend appears. A confirmation will appear in your terminal and on the site telling you that the backend finished running. 
 
 ### Setting Up the Frontend
 
@@ -101,66 +131,17 @@ The frontend will open automatically in your browser at `http://localhost:3000`.
 
 
 
-## Configuration
-
 ### NewsAPI Key
 
 The NewsAPI key is currently hardcoded in the `api/main.py` file. For production use, you should move it to an environment variable. You can get a free API key from [newsapi.org](https://newsapi.org).
 
 To use an environment variable:
+
 1. Create a `.env` file in the `api/` directory
 2. Add: `NEWS_API_KEY=your_key_here`
 3. Update the code to read from environment variables (using `python-dotenv`)
 
-### Model Settings
 
-If you want to adjust the model settings (maybe you have a powerful GPU or want different performance), you can modify the settings in `api/main.py`:
-
-```python
-llm = Llama(
-    model_path="./dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf",
-    n_gpu_layers=5,  # Increase this if you have a good GPU
-    n_ctx=2048,      # Context window size
-    n_batch=128      # Batch size for processing
-)
-```
-
-## Deployment Options
-
-### Local Development
-
-For development and personal use, running both frontend and backend locally works great. Just make sure you have enough RAM for the model.
-
-### Frontend-Only Deployment (Vercel)
-
-Since Vercel doesn't support running large language models, you can deploy just the frontend there and run the backend on your local machine or another server:
-
-###### Deployment
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy the frontend
-cd frontend
-vercel
-```
-
-Don't forget to update the API URL in the frontend config to point to wherever your backend is running.
-
-### Full Stack Deployment
-
-For a full deployment, you'll need:
-1. A server that can run Python and handle the large model file (Railway, Render, or your own server work)
-2. Update the frontend to point to your deployed backend URL
-3. Deploy the frontend to Vercel or similar
-
-## Important Notes
-
-- The model file is about 4.4GB, so make sure you have enough disk space
-- Loading the model into memory takes a minute or two on startup
-- The NewsAPI free tier has a 100 requests per day limit - enough for testing, but you might want to upgrade for heavy use
-- All processing happens locally, so no data is sent to external AI services
-- For best performance, use a machine with 16GB+ RAM and preferably a GPU
 
 ## How the RAG System Works
 
