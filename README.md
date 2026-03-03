@@ -14,7 +14,7 @@ This app lets you ask questions about any publicly traded company, and it will:
 
 ## Features
 
-- Real-time financial news: Automatically fetches the latest news from NewsAPI for any company you search
+- Real-time financial news: Automatically fetches the latest news from NewsAPI for any ticker you search
 - Intelligent analysis: Uses embeddings and vector search to find news most relevant to your question
 - Investment recommendations: Provides Buy/Hold/Sell recommendations with detailed rationale
 - Modern interface: Clean, responsive web interface built with React
@@ -66,7 +66,7 @@ By using:
 ```
 bnb_4bit_use_double_quant=True
 ```
-You can double quantize your model for more effcient training. After training I then merged the LoRA weights with the original model again to "finetune" the model. This step converted it back to a FP16 model. Using the llama.cpp package I quantized the GGUF FP16 file to a 4-bit, K-quantized, medium-variant GGUF file for CPU level support and on-device inference(q4_k_m.gguf).
+You can double quantize your model for more effcient training. After training I then merged the LoRA weights with the original model again to "finetune" the model. This step converted it back to a FP16 model. Using the **llama.cpp** package I quantized the GGUF FP16 file to a 4-bit, K-quantized, medium-variant GGUF file for CPU level support and on-device inference(q4_k_m.gguf).
 
 ### Using Your Finetuned LoRA Zip
 
@@ -161,7 +161,30 @@ The question is also converted into an embedding here:
 query_emb = embedder.encode([query])
 distances, indices = news_index.search(np.array(query_emb), top_k)
 ```
-Then the backend computes the squared Euclidean (L2) distance between the query vector and stored news vectors. It then returns the top k vectors with the smallest distances away. This means that they are more semantically similar. These embeddings are pointing to the relative text which is then retrieved and inputted into the LLM prompt.
+Then the backend computes the squared Euclidean (L2) distance between the query vector and stored news vectors. It then returns the top k vectors with the smallest distances away. This means that they are more semantically similar. This will cut the 15 articles initially to the 5 most semantically-similar articles. These embeddings are pointing to the relative text which is then retrieved and inputted into the LLM prompt.
+
+# Issues Fixed
+
+**Stock Ticker -> Company Search**: Before the backend was not able to convert the company name to the ticker symbol. This is needed for the newly added yfinance API to get stock data and espcially data for the graph. We changed the user input to give ticker instead of name.
+
+**RAG Retrieval Relevancy**: When model inference ran the model was not recieving relevant news sources from the API call. The backend was just recieving and embedding the **newest** 5 articles. This also made the corpus extremely small. I fixed the API search to get the first 15 news articles, and implemented keyword search + relevancy search rather than publish date. Financial data was also important:
+
+Using filtering within the API:
+
+```
+financial_domains = "bloomberg.com,reuters.com,cnbc.com,wsj.com,marketwatch.com,finance.yahoo.com,fool.com,seekingalpha.com,barrons.com,investopedia.com"
+    
+    # Enhanced query with financial context for better overall analysis and less room for hallucinations with limited tokens
+
+    enhanced_query = f'"{company_name}" AND (stock OR earnings OR market OR investment OR shares OR revenue OR profit)'
+    
+    url = (f"https://newsapi.org/v2/everything?"
+           f"q={enhanced_query}&sortBy=relevancy&pageSize=15&apiKey={NEWS_API_KEY}&language=en"
+           f"&domains={financial_domains}")
+    response = requests.get(url)
+```
+
+I filtered to utilize real, credible financial sources. Also, the initial query from the user is usually short and low on context. I prompt the LLM with an enahnced context instead to look at the whole market perspective to answer the user's questions. 
 
 ## License
 

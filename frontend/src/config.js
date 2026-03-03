@@ -13,7 +13,7 @@ export const config = {
   }
 };
 
-// Set this to 'external' when you want friends to access it
+
 export const CURRENT_MODE = 'development'; // Change to 'external' for friends
 
 export const getApiUrl = () => {

@@ -50,6 +50,7 @@ NEWS_API_KEY = "ac0a51f5e60740508402c48acec86ff2"
 
 def fetch_company_news(company_name):
     """Fetch news articles for a specific company."""
+
     url = (f"https://newsapi.org/v2/everything?"
            f"q={company_name}&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}&language=en")
     response = requests.get(url)
@@ -66,16 +67,16 @@ def fetch_company_news(company_name):
         return []
 
 
-
+# Create embeddings for the news sources
 def update_company_database(company_name):
-    """Fetch and embed news for user-selected company."""
+    
     global news_texts, news_index
 
     print(f"[INFO] Fetching news for: {company_name}")
     news_texts = fetch_company_news(company_name)
 
 
-
+#added error handking
     if not news_texts:
         print("[WARN] No news found.")
         return False
@@ -101,6 +102,7 @@ def retrieve_relevant_news(query, top_k=5):
 
     relevant = [news_texts[idx] for idx in indices[0] if idx < len(news_texts)]
     return "\n".join(relevant)
+
 
 def get_stock_data(ticker):
     """Fetch real-time stock data."""
@@ -142,7 +144,7 @@ Provide a concise, data-driven investment analysis."""
         return f"Error during generation: {str(e)}"
 
 def chat(company_input, question_input):
-    """Handles user input: company + question."""
+
     if not company_input.strip():
         return "Please enter a valid company name."
 

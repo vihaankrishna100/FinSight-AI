@@ -35,6 +35,8 @@ if not os.path.exists(MODEL_PATH):
     # Try original model as fallback
     MODEL_PATH = "./dolphin-2.9.2-qwen2-7b-Q4_K_M.gguf"
 
+
+
 try:
     if os.path.exists(MODEL_PATH):
         print(f"[MODEL] Loading from {MODEL_PATH}...")
@@ -69,13 +71,27 @@ RESERVED_TOKENS = 50
 
 
 def fetch_company_news(company_name):
-
-    """Fetch news articles for a specific company."""
+    
     print(f"\n[NEWS REQUEST] Fetching news sources for: {company_name}")
-    url = (f"https://newsapi.org/v2/everything?"
-           f"q={company_name}&sortBy=publishedAt&pageSize=5&apiKey={NEWS_API_KEY}&language=en")
-    response = requests.get(url)
+    
+    # domains
+    financial_domains = "bloomberg.com,reuters.com,cnbc.com,wsj.com,marketwatch.com,finance.yahoo.com,fool.com,seekingalpha.com,barrons.com,investopedia.com"
+    
+    # Enhanced query with financial context for better overall analysis and less room for hallucinations with limited tokens
 
+    enhanced_query = f'"{company_name}" AND (stock OR earnings OR market OR investment OR shares OR revenue OR profit)'
+    
+    url = (f"https://newsapi.org/v2/everything?"
+           f"q={enhanced_query}&sortBy=relevancy&pageSize=15&apiKey={NEWS_API_KEY}&language=en"
+           f"&domains={financial_domains}")
+    response = requests.get(url)
+    
+    # If there is a lower amount of news articles or information, get more general articles
+    if response.status_code == 200 and len(response.json().get('articles', [])) < 3:
+        print("[NEWS] Few results from financial domains, expanding search...")
+        url = (f"https://newsapi.org/v2/everything?"
+               f"q={company_name}&sortBy=relevancy&pageSize=15&apiKey={NEWS_API_KEY}&language=en")
+        response = requests.get(url)
 
     if response.status_code == 200:
         data = response.json()
@@ -141,8 +157,10 @@ def fetch_stock_data(ticker, period="1y"):
 
 def generate_stock_graph(ticker, period="3mo", graph_type="price"):
     """Generate a stock price graph and return as base64-encoded image."""
+
     try:
         print(f"\n[GRAPH REQUEST] Generating {graph_type} graph for {ticker}")
+        #yfinance data
         ticker_obj = yf.Ticker(ticker)
         hist = ticker_obj.history(period=period)
         
@@ -176,6 +194,7 @@ def generate_stock_graph(ticker, period="3mo", graph_type="price"):
         plt.tight_layout()
         
         # Convert to base64
+
         buffer = BytesIO()
         plt.savefig(buffer, format='png', dpi=100)
         buffer.seek(0)
@@ -234,27 +253,50 @@ def update_company_database(company_name):
     print(f"[SUCCESS] News database updated successfully for {company_name}. Index contains {news_index.ntotal} entries.\n")
     return True
 
-def retrieve_relevant_news(query, top_k=5):
-    """Retrieve top-k news articles relevant to the query."""
+def retrieve_relevant_news(query, company_name="", top_k=5):
+    """Retrieve top-k news articles relevant to the query with query expansion."""
     if not news_texts:
         return ""
 
     if embedder is None:
         return ""
 
-    query_emb = embedder.encode([query])
-    distances, indices = news_index.search(np.array(query_emb), top_k)
-
-    relevant = [news_texts[idx] for idx in indices[0] if idx < len(news_texts)]
+    # Query expansion - combine user question with company context for better semantic matching
+    expanded_query = f"{company_name} {query} stock financial analysis market"
+    print(f"[RAG] Expanded query: {expanded_query[:80]}...")
+    
+    query_emb = embedder.encode([expanded_query])
+    # Retrieve more candidates than needed for filtering
+    num_candidates = min(top_k * 2, len(news_texts))
+    distances, indices = news_index.search(np.array(query_emb), num_candidates)
+    
+    # Filter by distance threshold (lower = more similar for L2 distance)
+    relevant = []
+    for i, idx in enumerate(indices[0]):
+        if idx < len(news_texts):
+            # Only include if similarity is good enough (L2 distance < 1.5)
+            if distances[0][i] < 1.5:
+                relevant.append(news_texts[idx])
+                print(f"[RAG] Selected (dist={distances[0][i]:.2f}): {news_texts[idx][:60]}...")
+            if len(relevant) >= top_k:
+                break
+    
+    # Fallback: if threshold too strict, just return top_k
+    if not relevant:
+        relevant = [news_texts[idx] for idx in indices[0][:top_k] if idx < len(news_texts)]
+        print(f"[RAG] Using fallback - no articles met threshold")
+    
+    print(f"[RAG] Retrieved {len(relevant)} relevant articles")
     return "\n".join(relevant)
 
 def generate_response(user_query, company_name):
-    """Full RAG process: retrieve -> build prompt -> generate."""
+    #RAG process for the finetuned Qwen Model
+
     if llm is None:
         return "Model not loaded. Please check the backend setup."
 
     try:
-        relevant_news = retrieve_relevant_news(user_query)
+        relevant_news = retrieve_relevant_news(user_query, company_name)
         ticker = get_stock_ticker(company_name)
         stock_context = build_stock_context(ticker)
         
@@ -275,21 +317,27 @@ Recent News about {company_name}:
 Stock Data:
 {stock_context}
 
+
 User Question: {user_query}
 
-Given the recent news about {company_name} and current stock metrics, please provide your analysis."""
+Based on the news and stock data above, provide a concise investment analysis for {company_name}. Include:
+1. Current valuation assessment
+2. Key risks and opportunities  
+3. Buy/Hold/Sell recommendation with rationale
+
+Analysis:"""
         
         print(f"[GENERATION] Generating response for {company_name}...")
-        
-        output = llm(prompt, max_tokens=MAX_GENERATE_TOKENS, temperature=0.7, top_p=0.9)
+        #edited temp for a little better results
+        output = llm(prompt, max_tokens=MAX_GENERATE_TOKENS, temperature=0.5, top_p=0.9, stop=["User Question:", "User:", "\n\n\n"])
         response_text = output['choices'][0]['text'].strip()
         
         print(f"[GENERATION] Response generated")
         return response_text if response_text else "I'm sorry, I couldn't generate a response."
     except Exception as e:
-        return f"Error generating response: {str(e)}"
+        return f" Error generating response: {str(e)}"
 
-# --- API ENDPOINTS ---
+# API ENDPOINTS
 
 class ChatRequest(BaseModel):
     company: str
@@ -306,7 +354,7 @@ class GraphRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"message": "RAG LLM Physics API is running"}
+    return {"message": "RAG Finance API is running"}
 
 @app.get("/health")
 async def health_check():
@@ -385,6 +433,7 @@ async def get_stock_info(request: StockRequest):
 
 @app.post("/stock/graph")
 async def get_stock_graph(request: GraphRequest):
+
     #Generate and return a stock graph as base64-encoded imagee to push to fronend
     ticker = request.ticker.upper()
     

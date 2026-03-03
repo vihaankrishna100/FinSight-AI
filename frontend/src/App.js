@@ -9,19 +9,47 @@ function App() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [stockGraph, setStockGraph] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
   const responseRef = useRef(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
     
     if (!company.trim() || !question.trim()) {
-      setError('Please fill in both company name and question.');
+      setError('Please fill in both company name and question!');
       return;
     }
+
 
     setLoading(true);
     setError('');
     setResponse('Initializing analysis...\n');
+    setStockGraph(null);
+
+    // Fetch stock graph in parallel
+    const fetchGraph = async () => {
+      try {
+        setGraphLoading(true);
+        const ticker = company.trim().toUpperCase();
+        
+        const chartResponse = await fetch(`${getApiUrl()}/stock/graph`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, period: '3mo', graph_type: 'price' })
+        });
+        if (chartResponse.ok) {
+          const chartData = await chartResponse.json();
+          setStockGraph(chartData.image);
+        }
+      } catch (err) {
+        console.error('Error fetching graph:', err);
+      } finally {
+        setGraphLoading(false);
+      }
+    };
+    fetchGraph();
 
     try {
       const response = await fetch(`${getApiUrl()}/chat`, {
@@ -126,18 +154,20 @@ function App() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
                 <label htmlFor="company" className="block text-lg font-semibold text-gray-700 mb-3">
-                  Company to Track
+                  Stock Ticker
                 </label>
                 <input
                   type="text"
                   id="company"
                   value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  placeholder="e.g., Apple, Tesla, Microsoft"
+                  onChange={(e) => setCompany(e.target.value.toUpperCase())}
+                  placeholder="e.g., AAPL, TSLA, MSFT, GOOGL"
                   className="w-full px-4 py-3 text-lg border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:outline-none transition-colors"
                   disabled={loading}
                 />
               </div>
+
+
 
               <div>
                 <label htmlFor="question" className="block text-lg font-semibold text-gray-700 mb-3">
@@ -178,6 +208,7 @@ function App() {
           </div>
 
           {/* Error Display */}
+
           {error && (
             <div className="bg-red-50 border-l-4 border-red-400 p-4 mb-6 rounded-lg">
               <div className="flex">
@@ -193,7 +224,10 @@ function App() {
             </div>
           )}
 
+
+
           {/* Response Display */}
+
           {(response || loading) && (
             <div className="bg-white rounded-2xl shadow-2xl p-8">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">
@@ -205,13 +239,30 @@ function App() {
             </div>
           )}
 
+          {/* Stock Graph Display */}
+
+          {(stockGraph || graphLoading) && (
+            <div className="bg-white rounded-2xl shadow-2xl p-8 mt-8">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">Stock Price Chart</h2>
+              {graphLoading ? (
+                <div className="flex items-center justify-center p-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-3 text-gray-600">Loading chart...</span>
+                </div>
+              ) : (
+                <img src={stockGraph} alt="Stock price chart" className="w-full rounded-lg" />
+              )}
+            </div>
+          )}
+
           {/* Info Section */}
           <div className="mt-12 text-center">
             <div className="bg-blue-50 rounded-2xl p-6">
               <h3 className="text-xl font-semibold text-blue-800 mb-3">How it works</h3>
               <p className="text-blue-700">
-                Our AI analyzes real-time financial news to provide you with data-driven investment insights. 
-                Simply enter a company name and ask your investment question to get started.
+
+                  Our finetuned LM allows you to search for a stock and recive research-grade information from real-time news-sources.
+                  Start by typing out the company of your choice and the question that you have about it!        
               </p>
             </div>
           </div>
